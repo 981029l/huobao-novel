@@ -3,7 +3,7 @@ import { ref, watch } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useMessage } from 'naive-ui'
 import { NModal, NCard, NForm, NFormItem, NInput, NButton, NSpace, NIcon, NTooltip, NTabs, NTabPane, NSelect, NAutoComplete } from 'naive-ui'
-import { FlashOutline, HelpCircleOutline } from '@vicons/ionicons5'
+import { FlashOutline, HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
 
 const props = defineProps({
   modelValue: Boolean
@@ -53,6 +53,12 @@ const channelOptions = channels.map(c => ({ label: c.name, value: c.id }))
 // Current channel models - 当前渠道的模型列表
 import { computed } from 'vue'
 const currentChannelModels = computed(() => {
+  // If we have fetched models and current channel matches (or using custom), prioritize fetched
+  // Currently assuming fetched models apply to current config
+  if (settings.fetchedModels.length > 0) {
+     return settings.fetchedModels.map(m => ({ label: m, value: m }))
+  }
+
   const channel = channels.find(c => c.id === currentChannel.value)
   return channel?.models.map(m => ({ label: m, value: m })) || []
 })
@@ -142,6 +148,25 @@ async function testConnection() {
   }
 }
 
+// Fetch models - 获取模型
+const isFetchingModels = ref(false)
+async function handleFetchModels() {
+  if (!localConfig.value.apiKey) {
+    message.warning('请先输入 API Key')
+    return
+  }
+
+  try {
+    isFetchingModels.value = true
+    await settings.fetchAvailableModels(localConfig.value)
+    message.success('模型列表已更新')
+  } catch (error) {
+    message.error('获取模型列表失败: ' + error.message)
+  } finally {
+    isFetchingModels.value = false
+  }
+}
+
 function goToGetKey() {
   window.open('https://api.chatfire.site/login?inviteCode=EEE80324', '_blank')
 }
@@ -191,6 +216,12 @@ function goToGetKey() {
         <template #label>
           <div class="flex items-center gap-1">
             <span>默认模型</span>
+            <n-button text size="tiny" class="ml-2" @click="handleFetchModels" :loading="isFetchingModels">
+              <template #icon>
+                <n-icon><RefreshOutline /></n-icon>
+              </template>
+              刷新列表
+            </n-button>
             <n-tooltip trigger="hover">
               <template #trigger>
                 <n-icon class="text-gray-400 cursor-help" :size="14">

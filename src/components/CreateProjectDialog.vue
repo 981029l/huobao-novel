@@ -156,7 +156,7 @@ async function createProject() {
           <n-input-number 
             v-model:value="form.numberOfChapters" 
             :min="10" 
-            :max="500"
+            :max="10000"
             :step="10"
             class="w-full"
           />

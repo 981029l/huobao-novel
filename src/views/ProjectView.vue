@@ -71,6 +71,9 @@ async function handleGenerateArchitecture() {
       (step, current, total) => {
         generationStep.value = step
         generationProgress.value = { current, total }
+      },
+      (key, content) => {
+        novelStore.updateProject(project.value.id, { [key]: content })
       }
     )
 
@@ -110,6 +113,9 @@ async function handleGenerateBlueprint() {
       (step, current, total) => {
         generationStep.value = step
         generationProgress.value = { current, total }
+      },
+      (content) => {
+        novelStore.updateProject(project.value.id, { chapterBlueprint: content })
       }
     )
 
@@ -195,12 +201,12 @@ async function confirmRegenerate(type) {
         </n-button>
       </div>
       
-      <div class="flex items-start justify-between">
+      <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-bold text-gray-800 dark:text-white mb-2">
+          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white mb-2">
             {{ project.title }}
           </h1>
-          <div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+          <div class="flex flex-wrap items-center gap-3 text-xs md:text-sm text-gray-500 dark:text-gray-400">
             <n-tag :bordered="false" round size="small">{{ genreText }}</n-tag>
             <span>{{ project.numberOfChapters }} 章</span>
             <span>·</span>
@@ -209,7 +215,7 @@ async function confirmRegenerate(type) {
         </div>
 
         <!-- API status indicator - API 状态指示器 -->
-        <div v-if="!isApiConfigured" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">
+        <div v-if="!isApiConfigured" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 self-start">
           <WarningOutline class="w-5 h-5" />
           <span class="text-sm font-medium">请配置 API Key</span>
         </div>
@@ -243,7 +249,7 @@ async function confirmRegenerate(type) {
         <template #tab>
           <div class="flex items-center gap-2">
             <GridOutline class="w-4 h-4" />
-            <span>小说架构</span>
+            <span class="hidden sm:inline">小说架构</span>
             <n-tag v-if="project.architectureGenerated" type="success" size="small" :bordered="false" round>
               已生成
             </n-tag>
@@ -263,7 +269,7 @@ async function confirmRegenerate(type) {
         <template #tab>
           <div class="flex items-center gap-2">
             <ListOutline class="w-4 h-4" />
-            <span>章节大纲</span>
+            <span class="hidden sm:inline">章节大纲</span>
             <n-tag v-if="project.blueprintGenerated" type="success" size="small" :bordered="false" round>
               已生成
             </n-tag>
@@ -285,7 +291,7 @@ async function confirmRegenerate(type) {
         <template #tab>
           <div class="flex items-center gap-2">
             <PencilOutline class="w-4 h-4" />
-            <span>章节写作</span>
+            <span class="hidden sm:inline">章节写作</span>
             <n-tag v-if="writtenChaptersCount > 0" type="success" size="small" :bordered="false" round>
               {{ writtenChaptersCount }}/{{ project.numberOfChapters }}
             </n-tag>
@@ -304,7 +310,7 @@ async function confirmRegenerate(type) {
         <template #tab>
           <div class="flex items-center gap-2">
             <DownloadOutline class="w-4 h-4" />
-            <span>导出</span>
+            <span class="hidden sm:inline">导出</span>
           </div>
         </template>
 
@@ -366,11 +372,32 @@ async function confirmRegenerate(type) {
 
 <style>
 .novel-tabs .n-tabs-nav {
-  @apply bg-white dark:bg-[#1f1f23] rounded-xl p-1.5 border border-gray-200/80 dark:border-gray-700/50;
+  @apply bg-white dark:bg-[#1f1f23] rounded-xl p-1 border border-gray-200/80 dark:border-gray-700/50;
+  /* Remove overflow-x-auto and force flex layout */
+  overflow-x: hidden; 
+}
+
+/* Force tabs to be equal width and centered on mobile */
+.novel-tabs .n-tabs-nav-scroll-content {
+  width: 100%;
+}
+
+.novel-tabs .n-tabs-wrapper {
+  width: 100%;
+}
+
+.novel-tabs .n-tabs-tab-wrapper {
+  flex: 1;
+}
+
+.novel-tabs .n-tabs-tab {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 0 !important; /* Reduce padding */
 }
 
 .novel-tabs .n-tabs-pane-wrapper {
-  @apply pt-6;
+  @apply pt-4 md:pt-6;
 }
 
 .novel-tabs .n-tab-pane {

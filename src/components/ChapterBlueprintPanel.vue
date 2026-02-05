@@ -48,7 +48,7 @@ function updateBlueprint(value) {
     <!-- Not ready state - 未就绪状态 -->
     <div 
       v-if="!architectureGenerated" 
-      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
+      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-6 md:p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
     >
       <div class="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-xl shadow-amber-500/25">
         <WarningOutline class="w-12 h-12 text-white" />
@@ -64,7 +64,7 @@ function updateBlueprint(value) {
     <!-- Generate button area - 生成按钮区域 -->
     <div 
       v-else-if="!project.chapterBlueprint" 
-      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
+      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-6 md:p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
     >
       <div class="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center shadow-xl shadow-purple-500/25">
         <ListOutline class="w-12 h-12 text-white" />

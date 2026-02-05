@@ -40,6 +40,25 @@ export async function chatCompletion(config, prompt, onStream = null) {
 }
 
 /**
+ * Fetch available models - 获取可用模型列表
+ */
+export async function fetchModels(config) {
+  const { baseUrl, apiKey, timeout } = config
+
+  const response = await axios.get(
+    `${baseUrl}/models`,
+    {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      },
+      timeout: timeout * 1000
+    }
+  )
+
+  return response.data.data // Assuming standard OpenAI format { data: [{ id: '...' }] }
+}
+
+/**
  * Stream completion with callback
  * 流式补全并回调
  */
@@ -72,7 +91,7 @@ async function streamCompletion(baseUrl, apiKey, requestBody, timeout, onStream)
       if (line.startsWith('data: ')) {
         const data = line.slice(6)
         if (data === '[DONE]') continue
-        
+
         try {
           const parsed = JSON.parse(data)
           const content = parsed.choices?.[0]?.delta?.content || ''
@@ -96,13 +115,13 @@ async function streamCompletion(baseUrl, apiKey, requestBody, timeout, onStream)
  */
 export function cleanResponse(text) {
   if (!text) return ''
-  
+
   // Remove markdown code blocks - 移除 markdown 代码块
   let cleaned = text.replace(/```[\s\S]*?```/g, '')
   cleaned = cleaned.replace(/`/g, '')
-  
+
   // Trim whitespace - 去除空白
   cleaned = cleaned.trim()
-  
+
   return cleaned
 }

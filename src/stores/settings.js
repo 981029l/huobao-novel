@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, watch, computed } from 'vue'
+import { fetchModels } from '../api/llm'
 
 // Default model config - 默认模型配置
 const DEFAULT_MODEL = 'gemini-3-flash-preview'
@@ -7,14 +8,14 @@ const DEFAULT_MODEL = 'gemini-3-flash-preview'
 // Settings store - 设置状态管理
 export const useSettingsStore = defineStore('settings', () => {
   // State
-  const isDark = ref(localStorage.getItem('theme') === 'dark' || 
+  const isDark = ref(localStorage.getItem('theme') === 'dark' ||
     (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches))
-  
+
   const apiConfig = ref(JSON.parse(localStorage.getItem('api_config') || JSON.stringify({
     channel: 'chatfire',
-    baseUrl: 'https://api.chatfire.site/v1',
-    apiKey: '',
-    model: DEFAULT_MODEL,
+    baseUrl: import.meta.env.VITE_AI_BASE_URL || 'https://api.chatfire.site/v1',
+    apiKey: import.meta.env.VITE_AI_API_KEY || '',
+    model: import.meta.env.VITE_AI_MODEL || DEFAULT_MODEL,
     temperature: 0.7,
     maxTokens: 8192,
     timeout: 600
@@ -28,6 +29,9 @@ export const useSettingsStore = defineStore('settings', () => {
     finalize: '',      // 定稿（摘要/状态更新）
     enrich: ''         // 扩写
   })))
+
+  // Fetched models from API - 从 API 获取的模型列表
+  const fetchedModels = ref([])
 
   // Get config for specific stage - 获取特定环节的配置
   function getStageConfig(stage) {
@@ -67,13 +71,27 @@ export const useSettingsStore = defineStore('settings', () => {
     localStorage.setItem('stage_models', JSON.stringify(stageModels.value))
   }
 
+  // Fetch available models - 获取可用模型
+  async function fetchAvailableModels(config = apiConfig.value) {
+    try {
+      const models = await fetchModels(config)
+      fetchedModels.value = models.map(m => m.id)
+      return fetchedModels.value
+    } catch (error) {
+      console.error('Failed to fetch models:', error)
+      throw error
+    }
+  }
+
   return {
     isDark,
     apiConfig,
     stageModels,
+    fetchedModels,
     toggleDark,
     updateApiConfig,
     updateStageModels,
-    getStageConfig
+    getStageConfig,
+    fetchAvailableModels
   }
 })

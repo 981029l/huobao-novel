@@ -39,12 +39,12 @@ function openProject(project) {
 <template>
   <div class="max-w-6xl mx-auto">
     <!-- Hero Section - 英雄区域 -->
-    <div class="text-center py-16 mb-8">
+    <div class="text-center py-8 md:py-16 mb-8">
       <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-6">
         <RocketOutline class="w-4 h-4" />
         基于雪花写作法的 AI 创作工具
       </div>
-      <h1 class="text-5xl font-bold mb-6 bg-gradient-to-r from-gray-900 via-indigo-800 to-purple-800 dark:from-white dark:via-indigo-200 dark:to-purple-200 bg-clip-text text-transparent">
+      <h1 class="text-3xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-gray-900 via-indigo-800 to-purple-800 dark:from-white dark:via-indigo-200 dark:to-purple-200 bg-clip-text text-transparent">
         AI 小说生成器
       </h1>
       <p class="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">

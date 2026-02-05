@@ -39,7 +39,7 @@ function updateContent(key, value) {
 <template>
   <div class="space-y-4">
     <!-- Generate button area - 生成按钮区域 -->
-    <div v-if="!hasContent" class="bg-white dark:bg-[#1f1f23] rounded-2xl p-12 border border-gray-200/80 dark:border-gray-700/50 text-center">
+    <div v-if="!hasContent" class="bg-white dark:bg-[#1f1f23] rounded-2xl p-6 md:p-12 border border-gray-200/80 dark:border-gray-700/50 text-center">
       <div class="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-xl shadow-indigo-500/25">
         <SparklesOutline class="w-12 h-12 text-white" />
       </div>

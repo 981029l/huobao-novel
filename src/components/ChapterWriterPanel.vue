@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useNovelStore } from '../stores/novel'
 import { useSettingsStore } from '../stores/settings'
 import { generateChapterDraft, finalizeChapter, enrichChapter, parseChapterBlueprint } from '../api/generator'
-import { useMessage, useDialog, NButton, NInput, NProgress, NTag, NIcon, NTooltip } from 'naive-ui'
+import { useMessage, useDialog, NButton, NInput, NProgress, NTag, NIcon, NTooltip, NSelect } from 'naive-ui'
 import { WarningOutline, SparklesOutline, PencilOutline, SaveOutline, CheckmarkOutline, CheckmarkCircleOutline, ReloadOutline, HelpCircleOutline, DocumentTextOutline } from '@vicons/ionicons5'
 
 const props = defineProps({
@@ -88,11 +88,13 @@ async function handleGenerate() {
   try {
     emit('update:isGenerating', true)
     
+    // streaming callback
     const draft = await generateChapterDraft(
       props.project,
       currentChapter.value,
       settings.getStageConfig('chapter'),
-      (step) => { generationStep.value = step }
+      (step) => { generationStep.value = step },
+      (content) => { chapterContent.value = content }
     )
 
     chapterContent.value = draft
@@ -106,93 +108,82 @@ async function handleGenerate() {
   }
 }
 
-// Save and finalize chapter - 保存并定稿章节
-async function handleSaveAndFinalize() {
-  if (!chapterContent.value.trim()) {
-    message.warning('章节内容为空')
-    return
-  }
-
-  if (!settings.apiConfig.apiKey) {
-    message.warning('请先在设置中配置 API Key')
-    return
-  }
-
-  try {
-    emit('update:isGenerating', true)
-
-    // Save chapter content - 保存章节内容
-    const updatedChapters = { ...props.project.chapters, [currentChapter.value]: chapterContent.value }
-    
-    // Finalize chapter (update summary and character state)
-    const updates = await finalizeChapter(
-      props.project,
-      currentChapter.value,
-      chapterContent.value,
-      settings.getStageConfig('finalize'),
-      (step) => { generationStep.value = step }
-    )
-
-    novelStore.updateProject(props.project.id, {
-      chapters: updatedChapters,
-      ...updates
-    })
-
-    message.success(`第 ${currentChapter.value} 章已保存并定稿`)
-    
-    // Auto advance to next chapter - 自动跳转到下一章
-    if (currentChapter.value < props.project.numberOfChapters) {
-      currentChapter.value++
-      chapterContent.value = ''
-    }
-  } catch (error) {
-    console.error('Finalize error:', error)
-    message.error('保存失败: ' + error.message)
-  } finally {
-    emit('update:isGenerating', false)
-    generationStep.value = ''
-  }
-}
-
-// Quick save without finalize - 快速保存（不定稿）
-function handleQuickSave() {
-  if (!chapterContent.value.trim()) {
-    message.warning('章节内容为空')
-    return
-  }
-
-  const updatedChapters = { ...props.project.chapters, [currentChapter.value]: chapterContent.value }
-  novelStore.updateProject(props.project.id, { chapters: updatedChapters })
-  message.success('已保存')
-}
-
 // Enrich chapter - 扩写章节
 async function handleEnrich() {
-  if (!chapterContent.value.trim()) {
-    message.warning('请先生成或输入章节内容')
-    return
-  }
-
-  if (!settings.apiConfig.apiKey) {
-    message.warning('请先在设置中配置 API Key')
-    return
-  }
+  if (!chapterContent.value) return
 
   try {
     emit('update:isGenerating', true)
     
     const enriched = await enrichChapter(
       chapterContent.value,
-      props.project.wordNumber,
       settings.getStageConfig('enrich'),
-      (step) => { generationStep.value = step }
+      (step) => { generationStep.value = step },
+      (content) => { chapterContent.value = content }
     )
 
     chapterContent.value = enriched
-    message.success('扩写完成')
+    message.success('章节扩写完成')
   } catch (error) {
-    console.error('Enrich error:', error)
     message.error('扩写失败: ' + error.message)
+  } finally {
+    emit('update:isGenerating', false)
+    generationStep.value = ''
+  }
+}
+
+// Save chapter only - 仅保存章节
+function handleQuickSave() {
+  if (!chapterContent.value.trim()) {
+    message.warning('内容为空')
+    return
+  }
+  
+  const chapters = { ...props.project.chapters }
+  chapters[currentChapter.value] = chapterContent.value
+  
+  novelStore.updateProject(props.project.id, { chapters })
+  message.success('已保存')
+}
+
+// Save and finalize - 保存并定稿
+async function handleSaveAndFinalize() {
+  if (!chapterContent.value.trim()) {
+    message.warning('内容为空')
+    return
+  }
+
+  try {
+    emit('update:isGenerating', true)
+    generationStep.value = '正在更新章节摘要和角色状态...'
+
+    const results = await finalizeChapter(
+      props.project,
+      currentChapter.value,
+      chapterContent.value,
+      settings.getStageConfig('chapter'), // using chapter config for finalization too
+      (step) => { generationStep.value = step }
+    )
+
+    // Update project with new data
+    novelStore.updateProject(props.project.id, {
+      chapters: {
+        ...props.project.chapters,
+        [currentChapter.value]: chapterContent.value
+      },
+      ...results
+    })
+
+    message.success('章节已定稿，上下文已更新')
+    
+    // Auto move to next chapter if available
+    if (currentChapter.value < props.project.numberOfChapters) {
+      const next = currentChapter.value + 1
+      loadChapter(next)
+    }
+  } catch (error) {
+    console.error('Finalize error:', error)
+    message.error('定稿失败: ' + error.message)
   } finally {
     emit('update:isGenerating', false)
     generationStep.value = ''
@@ -208,7 +199,7 @@ loadChapter(nextChapterToWrite.value)
     <!-- Not ready state - 未就绪状态 -->
     <div 
       v-if="!project?.blueprintGenerated" 
-      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
+      class="bg-white dark:bg-[#1f1f23] rounded-2xl p-6 md:p-12 border border-gray-200/80 dark:border-gray-700/50 text-center"
     >
       <div class="w-24 h-24 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-xl shadow-amber-500/25">
         <WarningOutline class="w-12 h-12 text-white" />
@@ -220,161 +211,142 @@ loadChapter(nextChapterToWrite.value)
     </div>
 
     <!-- Main content - 主内容 -->
-    <template v-else>
-      <!-- Progress indicator - 进度指示 -->
-      <div class="bg-white dark:bg-[#1f1f23] rounded-xl p-5 border border-gray-200/80 dark:border-gray-700/50">
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-sm font-medium text-gray-600 dark:text-gray-400">写作进度</span>
-          <span class="text-sm font-bold text-gray-800 dark:text-white">
-            {{ writtenChaptersCount }} / {{ project.numberOfChapters }} 章
-          </span>
-        </div>
-        <n-progress 
-          type="line"
-          :percentage="Math.round((writtenChaptersCount / project.numberOfChapters) * 100)"
-          :height="10"
-          :border-radius="6"
-          :fill-border-radius="6"
-          :show-indicator="false"
-        />
-      </div>
-
-      <!-- Chapter selector and editor - 章节选择器和编辑器 -->
-      <div class="grid grid-cols-12 gap-4">
-        <!-- Chapter list sidebar - 章节列表侧边栏 -->
-        <div class="col-span-3">
-          <div class="bg-white dark:bg-[#1f1f23] rounded-xl border border-gray-200/80 dark:border-gray-700/50 overflow-hidden">
-            <div class="p-4 border-b border-gray-200/80 dark:border-gray-700/50">
-              <h3 class="font-semibold text-gray-800 dark:text-white">章节列表</h3>
+    <div v-else class="h-full flex flex-col gap-4">
+      <!-- Toolbar - 工具栏 -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#1f1f23] p-4 rounded-xl border border-gray-200/80 dark:border-gray-700/50">
+        <div class="flex items-center gap-3 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto">
+          <!-- Progress indicator - 进度指示 -->
+          <div class="flex-shrink-0">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-medium text-gray-600 dark:text-gray-400">进度</span>
+              <span class="text-xs font-bold text-gray-800 dark:text-white">
+                {{ writtenChaptersCount }}/{{ project.numberOfChapters }}
+              </span>
             </div>
-            <div class="max-h-[500px] overflow-y-auto">
-              <div
-                v-for="ch in blueprintChapters"
-                :key="ch.number"
-                class="px-4 py-3 cursor-pointer border-b border-gray-100 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                :class="{ 'bg-indigo-50 dark:bg-indigo-900/20 border-l-2 !border-l-indigo-500': ch.number === currentChapter }"
-                @click="loadChapter(ch.number)"
-              >
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-medium text-gray-800 dark:text-white truncate flex-1">
-                    第{{ ch.number }}章
-                  </span>
-                  <CheckmarkCircleOutline v-if="project.chapters?.[ch.number]" class="w-5 h-5 text-green-500 ml-2" />
-                </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-1">{{ ch.title }}</p>
-              </div>
-            </div>
+            <n-progress 
+              type="line"
+              :percentage="project.numberOfChapters > 0 ? Math.round((writtenChaptersCount / project.numberOfChapters) * 100) : 0"
+              :height="6"
+              :border-radius="4"
+              :fill-border-radius="4"
+              :show-indicator="false"
+              class="w-24"
+            />
           </div>
-        </div>
 
-        <!-- Editor area - 编辑区域 -->
-        <div class="col-span-9 space-y-4">
+          <!-- Chapter selector - 章节选择器 -->
+          <div class="flex-shrink-0">
+            <n-select
+              v-model:value="currentChapter"
+              :options="blueprintChapters.map(c => ({ label: `第${c.number}章 ${c.title}`, value: c.number }))"
+              placeholder="选择章节"
+              class="w-40"
+              size="small"
+              @update:value="loadChapter"
+            />
+          </div>
+
           <!-- Chapter info header - 章节信息头部 -->
-          <div class="bg-white dark:bg-[#1f1f23] rounded-xl p-5 border border-gray-200/80 dark:border-gray-700/50">
-            <div class="flex items-center justify-between mb-3">
-              <h3 class="text-lg font-bold text-gray-800 dark:text-white">
-                第{{ currentChapter }}章 - {{ currentChapterInfo?.title || '未命名' }}
-              </h3>
-              <div class="flex items-center gap-2">
-                <n-tag v-if="chapterExists" type="success" size="small" :bordered="false" round>已保存</n-tag>
-                <n-tag v-else type="info" size="small" :bordered="false" round>未保存</n-tag>
-              </div>
-            </div>
-            
-            <!-- Chapter meta info - 章节元信息 -->
-            <div v-if="currentChapterInfo" class="flex flex-wrap gap-2 text-xs">
-              <n-tag size="small" :bordered="false" round>{{ currentChapterInfo.position }}</n-tag>
-              <n-tag size="small" type="success" :bordered="false" round>{{ currentChapterInfo.purpose }}</n-tag>
-              <n-tag size="small" type="warning" :bordered="false" round>{{ currentChapterInfo.suspense }}</n-tag>
-            </div>
-            <p v-if="currentChapterInfo?.summary" class="text-sm text-gray-600 dark:text-gray-400 mt-3 leading-relaxed">
-              {{ currentChapterInfo.summary }}
-            </p>
-          </div>
-
-          <!-- Global Summary - 前文摘要 -->
-          <div 
-            v-if="currentChapter > 1 && project.globalSummary" 
-            class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl p-4 border border-amber-200/50 dark:border-amber-700/30"
-          >
-            <div class="flex items-center gap-2 mb-2">
-              <DocumentTextOutline class="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <span class="text-sm font-medium text-amber-700 dark:text-amber-300">前文摘要</span>
-            </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-              {{ project.globalSummary }}
-            </p>
-          </div>
-
-          <!-- Generation status - 生成状态 -->
-          <div v-if="isGenerating" class="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-4 border border-indigo-200/50 dark:border-indigo-700/50">
-            <div class="flex items-center gap-3">
-              <ReloadOutline class="w-5 h-5 text-indigo-500 animate-spin" />
-              <span class="text-indigo-700 dark:text-indigo-300 font-medium">{{ generationStep || '处理中...' }}</span>
-            </div>
-          </div>
-
-          <!-- Action buttons - 操作按钮 -->
-          <div class="flex items-center gap-2 flex-wrap">
-            <n-button type="primary" :loading="isGenerating" @click="handleGenerate">
-              <template #icon>
-                <n-icon><SparklesOutline /></n-icon>
-              </template>
-              生成草稿
-            </n-button>
-            <n-button :disabled="isGenerating || !chapterContent" @click="handleEnrich" secondary>
-              <template #icon>
-                <n-icon><PencilOutline /></n-icon>
-              </template>
-              扩写
-            </n-button>
-            <div class="flex-1"></div>
-            <n-button :disabled="isGenerating || !chapterContent" @click="handleQuickSave" tertiary>
-              <template #icon>
-                <n-icon><SaveOutline /></n-icon>
-              </template>
-              快速保存
-            </n-button>
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <n-icon class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" :size="18">
-                  <HelpCircleOutline />
-                </n-icon>
-              </template>
-              仅保存章节内容，不更新摘要和角色状态
-            </n-tooltip>
-            <n-button type="success" :loading="isGenerating" :disabled="!chapterContent" @click="handleSaveAndFinalize">
-              <template #icon>
-                <n-icon><CheckmarkOutline /></n-icon>
-              </template>
-              保存并定稿
-            </n-button>
-            <n-tooltip trigger="hover">
-              <template #trigger>
-                <n-icon class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" :size="18">
-                  <HelpCircleOutline />
-                </n-icon>
-              </template>
-              保存内容并更新章节摘要、角色状态，用于后续章节的上下文连贯性
-            </n-tooltip>
-          </div>
-
-          <!-- Editor textarea - 编辑器文本框 -->
-          <n-input
-            v-model:value="chapterContent"
-            type="textarea"
-            :autosize="{ minRows: 20, maxRows: 40 }"
-            :placeholder="`在此编写或生成第 ${currentChapter} 章内容...`"
-            class="novel-textarea"
-          />
-
-          <!-- Word count - 字数统计 -->
-          <div class="text-right text-sm text-gray-500 dark:text-gray-400">
-            当前字数：<span class="font-medium text-gray-700 dark:text-gray-300">{{ chapterContent.length }}</span> / 目标：{{ project.wordNumber }}
+          <div class="flex-1 min-w-[120px]">
+             <div class="flex flex-col gap-1">
+               <div class="flex items-center gap-2">
+                 <h3 class="text-sm font-bold text-gray-800 dark:text-white truncate max-w-[150px]">
+                   {{ currentChapterInfo?.title || '未命名' }}
+                 </h3>
+                 <n-tag v-if="chapterExists" type="success" size="small" :bordered="false" round>已保存</n-tag>
+                 <n-tag v-else type="info" size="small" :bordered="false" round>未保存</n-tag>
+               </div>
+             </div>
           </div>
         </div>
+
+        <!-- Action buttons - 操作按钮 -->
+        <div class="flex flex-wrap gap-2 md:ml-auto">
+          <n-button type="primary" :loading="isGenerating" @click="handleGenerate" size="small">
+            <template #icon>
+              <n-icon><SparklesOutline /></n-icon>
+            </template>
+            生成
+          </n-button>
+          <n-button :disabled="isGenerating || !chapterContent" @click="handleEnrich" secondary size="small">
+            <template #icon>
+              <n-icon><PencilOutline /></n-icon>
+            </template>
+            扩写
+          </n-button>
+          <n-button 
+            v-if="!isGenerating"
+            secondary 
+            type="error"
+            size="small"
+            class="!px-3"
+            @click="handleQuickSave"
+          >
+            <template #icon>
+              <n-icon><SaveOutline /></n-icon>
+            </template>
+            保存
+          </n-button>
+          
+          <n-button type="success" :loading="isGenerating" :disabled="!chapterContent" @click="handleSaveAndFinalize" size="small">
+            <template #icon>
+              <n-icon><CheckmarkOutline /></n-icon>
+            </template>
+            定稿
+          </n-button>
+        </div>
       </div>
-    </template>
+
+      <!-- Main Editor Area -->
+      <div class="flex-1 space-y-4">
+        <!-- Global Summary - 前文摘要 -->
+        <div 
+          v-if="currentChapter > 1 && project.globalSummary" 
+          class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl p-3 border border-amber-200/50 dark:border-amber-700/30"
+        >
+          <div class="flex items-center gap-2 mb-1">
+            <DocumentTextOutline class="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span class="text-xs font-medium text-amber-700 dark:text-amber-300">前文摘要</span>
+          </div>
+          <p class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto">
+            {{ project.globalSummary }}
+          </p>
+        </div>
+
+        <!-- Generation status - 生成状态 -->
+        <div v-if="isGenerating" class="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-3 border border-indigo-200/50 dark:border-indigo-700/50">
+          <div class="flex items-center gap-2">
+            <ReloadOutline class="w-4 h-4 text-indigo-500 animate-spin" />
+            <span class="text-indigo-700 dark:text-indigo-300 text-sm font-medium">{{ generationStep || '处理中...' }}</span>
+          </div>
+        </div>
+
+        <!-- Editor textarea - 编辑器文本框 -->
+        <div class="bg-white dark:bg-[#1f1f23] rounded-xl border border-gray-200/80 dark:border-gray-700/50 p-4">
+           <!-- Meta Tags -->
+           <div v-if="currentChapterInfo" class="flex flex-wrap gap-2 text-xs mb-3 pb-3 border-b border-gray-100 dark:border-gray-700/50">
+              <span class="text-gray-400">本章目标:</span>
+              <n-tag size="tiny" type="success" :bordered="false" round>{{ currentChapterInfo.purpose }}</n-tag>
+              <n-tag size="tiny" type="warning" :bordered="false" round>{{ currentChapterInfo.suspense }}</n-tag>
+              <div v-if="currentChapterInfo.summary" class="w-full mt-1 text-gray-500 italic">
+                {{ currentChapterInfo.summary }}
+              </div>
+           </div>
+
+           <n-input
+             v-model:value="chapterContent"
+             type="textarea"
+             :autosize="{ minRows: 15, maxRows: 30 }"
+             :placeholder="`在此编写或生成第 ${currentChapter} 章内容...`"
+             class="novel-textarea !border-0 !bg-transparent !p-0"
+           />
+           
+           <!-- Word count -->
+           <div class="text-right text-xs text-gray-400 mt-2 border-t border-gray-100 dark:border-gray-700/50 pt-2">
+             {{ chapterContent ? chapterContent.length : 0 }} 字
+           </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
-

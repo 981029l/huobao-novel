@@ -18,69 +18,52 @@ function formatGenre(genre) {
  * Generate novel architecture - 生成小说架构
  * Steps: Core seed → Character dynamics → World building → Plot architecture
  */
-export async function generateArchitecture(project, apiConfig, onProgress) {
-  const results = {
-    coreSeed: project.coreSeed || '',
-    characterDynamics: project.characterDynamics || '',
-    worldBuilding: project.worldBuilding || '',
-    plotArchitecture: project.plotArchitecture || '',
-    characterState: project.characterState || ''
-  }
+export async function generateArchitecture(project, apiConfig, onProgress, onStream) {
+  const results = { ...project }
 
-  const params = {
-    topic: project.topic,
-    genre: formatGenre(project.genre),
-    numberOfChapters: project.numberOfChapters,
-    wordNumber: project.wordNumber,
-    userGuidance: project.userGuidance || ''
-  }
-
-  // Step 1: Core seed - 核心种子
+  // 1. Core Seed
   if (!results.coreSeed) {
     onProgress('正在生成核心种子...', 1, 5)
-    const prompt = coreSeedPrompt(params)
-    results.coreSeed = cleanResponse(await chatCompletion(apiConfig, prompt))
+    const prompt = architecturePrompts.coreSeed(project)
+    results.coreSeed = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream('coreSeed', full) : null
+    ))
   }
 
-  // Step 2: Character dynamics - 角色动力学
+  // 2. Character Dynamics
   if (!results.characterDynamics) {
     onProgress('正在生成角色体系...', 2, 5)
-    const prompt = characterDynamicsPrompt({
-      ...params,
-      coreSeed: results.coreSeed
-    })
-    results.characterDynamics = cleanResponse(await chatCompletion(apiConfig, prompt))
+    const prompt = architecturePrompts.characterDynamics({ ...project, ...results })
+    results.characterDynamics = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream('characterDynamics', full) : null
+    ))
   }
 
-  // Step 2.5: Character state - 角色状态
+  // 3. Character State (Initial)
   if (!results.characterState && results.characterDynamics) {
-    onProgress('正在生成角色状态...', 2.5, 5)
-    const prompt = createCharacterStatePrompt({
-      characterDynamics: results.characterDynamics
-    })
-    results.characterState = cleanResponse(await chatCompletion(apiConfig, prompt))
+    onProgress('正在生成初始角色状态...', 3, 5)
+    const prompt = architecturePrompts.characterState({ ...project, ...results })
+    results.characterState = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream('characterState', full) : null
+    ))
   }
 
-  // Step 3: World building - 世界观
+  // 4. World Building
   if (!results.worldBuilding) {
-    onProgress('正在构建世界观...', 3, 5)
-    const prompt = worldBuildingPrompt({
-      ...params,
-      coreSeed: results.coreSeed
-    })
-    results.worldBuilding = cleanResponse(await chatCompletion(apiConfig, prompt))
+    onProgress('正在生成世界观...', 4, 5)
+    const prompt = architecturePrompts.worldBuilding({ ...project, ...results })
+    results.worldBuilding = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream('worldBuilding', full) : null
+    ))
   }
 
-  // Step 4: Plot architecture - 情节架构
+  // 5. Plot architecture - 情节架构
   if (!results.plotArchitecture) {
-    onProgress('正在设计情节架构...', 4, 5)
-    const prompt = plotArchitecturePrompt({
-      ...params,
-      coreSeed: results.coreSeed,
-      characterDynamics: results.characterDynamics,
-      worldBuilding: results.worldBuilding
-    })
-    results.plotArchitecture = cleanResponse(await chatCompletion(apiConfig, prompt))
+    onProgress('正在设计情节架构...', 5, 5)
+    const prompt = architecturePrompts.plotArchitecture({ ...project, ...results })
+    results.plotArchitecture = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream('plotArchitecture', full) : null
+    ))
   }
 
   onProgress('架构生成完成!', 5, 5)
@@ -90,9 +73,9 @@ export async function generateArchitecture(project, apiConfig, onProgress) {
 /**
  * Generate chapter blueprint - 生成章节大纲
  */
-export async function generateChapterBlueprint(project, apiConfig, onProgress) {
+export async function generateChapterBlueprint(project, apiConfig, onProgress, onStream) {
   const { numberOfChapters, userGuidance } = project
-  
+
   // Build novel architecture text - 构建小说架构文本
   const novelArchitecture = `
 #=== 0) 小说设定 ===
@@ -118,7 +101,7 @@ ${project.plotArchitecture}
   chunkSize = Math.max(1, Math.min(chunkSize, numberOfChapters))
 
   let blueprint = project.chapterBlueprint || ''
-  
+
   // Parse existing chapters - 解析已有章节
   const existingChapters = blueprint.match(/第\s*(\d+)\s*章/g) || []
   const maxExistingChapter = existingChapters.length > 0
@@ -135,7 +118,9 @@ ${project.plotArchitecture}
       novelArchitecture,
       numberOfChapters
     })
-    blueprint = cleanResponse(await chatCompletion(apiConfig, prompt))
+    blueprint = cleanResponse(await chatCompletion(apiConfig, prompt,
+      onStream ? (chunk, full) => onStream(full) : null
+    ))
   } else {
     // Chunked generation - 分块生成
     while (currentStart <= numberOfChapters) {
@@ -158,8 +143,10 @@ ${project.plotArchitecture}
         endChapter: currentEnd
       })
 
-      const chunkResult = cleanResponse(await chatCompletion(apiConfig, prompt))
-      
+      const chunkResult = cleanResponse(await chatCompletion(apiConfig, prompt,
+        onStream ? (chunk, full) => onStream(full) : null
+      ))
+
       if (chunkResult) {
         blueprint = blueprint ? `${blueprint}\n\n${chunkResult}` : chunkResult
       }
@@ -177,12 +164,12 @@ ${project.plotArchitecture}
  */
 function limitChapterBlueprint(blueprint, limit) {
   if (!blueprint) return ''
-  
+
   const pattern = /(第\s*\d+\s*章.*?)(?=第\s*\d+\s*章|$)/gs
   const chapters = blueprint.match(pattern) || []
-  
+
   if (chapters.length <= limit) return blueprint
-  
+
   return chapters.slice(-limit).join('\n\n').trim()
 }
 
@@ -199,11 +186,11 @@ export function parseChapterBlueprint(blueprint) {
   while ((match = pattern.exec(blueprint)) !== null) {
     const chapterNum = parseInt(match[1])
     const title = match[2].trim()
-    
+
     // Extract chapter details - 提取章节详情
     const startIndex = match.index
     const endIndex = blueprint.indexOf(`第 ${chapterNum + 1} 章`, startIndex)
-    const chapterText = endIndex > -1 
+    const chapterText = endIndex > -1
       ? blueprint.substring(startIndex, endIndex)
       : blueprint.substring(startIndex)
 
@@ -234,10 +221,10 @@ function extractField(text, fieldName) {
 /**
  * Generate a single chapter draft - 生成单章草稿
  */
-export async function generateChapterDraft(project, chapterNumber, apiConfig, onProgress) {
+export async function generateChapterDraft(project, chapterNumber, apiConfig, onProgress, onStream) {
   const chapters = parseChapterBlueprint(project.chapterBlueprint)
   const chapterInfo = chapters.find(c => c.number === chapterNumber)
-  
+
   if (!chapterInfo) {
     throw new Error(`章节 ${chapterNumber} 不存在于大纲中`)
   }
@@ -285,7 +272,7 @@ export async function generateChapterDraft(project, chapterNumber, apiConfig, on
   } else {
     // Subsequent chapters - 后续章节
     onProgress(`正在生成第 ${chapterNumber} 章草稿...`, 0, 3)
-    
+
     // Get previous chapter excerpt - 获取前章结尾段
     const prevChapter = project.chapters?.[chapterNumber - 1] || ''
     const previousChapterExcerpt = prevChapter.slice(-800) || '(无前章内容)'
@@ -316,7 +303,9 @@ export async function generateChapterDraft(project, chapterNumber, apiConfig, on
     })
   }
 
-  const chapterText = cleanResponse(await chatCompletion(apiConfig, prompt))
+  const chapterText = cleanResponse(await chatCompletion(apiConfig, prompt,
+    onStream ? (chunk, full) => onStream(full) : null
+  ))
   onProgress(`第 ${chapterNumber} 章草稿生成完成`, 1, 3)
 
   return chapterText
@@ -325,22 +314,22 @@ export async function generateChapterDraft(project, chapterNumber, apiConfig, on
 /**
  * Finalize chapter - 章节定稿（更新摘要和角色状态）
  */
-export async function finalizeChapter(project, chapterNumber, chapterText, apiConfig, onProgress) {
+export async function finalizeChapter(project, chapterNumber, chapterText, apiConfig, onProgress, onStream) {
   onProgress('正在更新前文摘要...', 1, 3)
-  
+
   // Update global summary - 更新前文摘要
   const newSummary = cleanResponse(await chatCompletion(apiConfig, summaryPrompt({
     chapterText,
     globalSummary: project.globalSummary || ''
-  })))
+  }), onStream ? (chunk, full) => onStream('summary', full) : null))
 
   onProgress('正在更新角色状态...', 2, 3)
-  
+
   // Update character state - 更新角色状态
   const newCharacterState = cleanResponse(await chatCompletion(apiConfig, updateCharacterStatePrompt({
     chapterText,
     oldState: project.characterState || ''
-  })))
+  }), onStream ? (chunk, full) => onStream('characterState', full) : null))
 
   onProgress('章节定稿完成', 3, 3)
 
@@ -353,13 +342,13 @@ export async function finalizeChapter(project, chapterNumber, chapterText, apiCo
 /**
  * Enrich chapter text - 扩写章节
  */
-export async function enrichChapter(chapterText, wordNumber, apiConfig, onProgress) {
+export async function enrichChapter(chapterText, wordNumber, apiConfig, onProgress, onStream) {
   onProgress('正在扩写章节...', 0, 1)
-  
+
   const enrichedText = cleanResponse(await chatCompletion(apiConfig, enrichChapterPrompt({
     chapterText,
     wordNumber
-  })))
+  }), onStream ? (chunk, full) => onStream(full) : null))
 
   onProgress('扩写完成', 1, 1)
   return enrichedText || chapterText
@@ -370,14 +359,14 @@ export async function enrichChapter(chapterText, wordNumber, apiConfig, onProgre
  */
 export function exportNovelToText(project) {
   const lines = []
-  
+
   // Title - 标题
   lines.push(`《${project.title}》`)
   lines.push('')
   lines.push(`类型：${formatGenre(project.genre)}`)
   lines.push(`主题：${project.topic}`)
   lines.push('')
-  lines.push('=' .repeat(50))
+  lines.push('='.repeat(50))
   lines.push('')
 
   // Chapters - 章节内容
@@ -388,7 +377,7 @@ export function exportNovelToText(project) {
   for (const num of chapterNums) {
     const info = blueprintChapters.find(c => c.number === num)
     const title = info?.title || `第${num}章`
-    
+
     lines.push(`第${num}章 ${title}`)
     lines.push('')
     lines.push(chapters[num])
@@ -405,7 +394,7 @@ export function exportNovelToText(project) {
  */
 export function exportNovelToMarkdown(project) {
   const lines = []
-  
+
   // Title - 标题
   lines.push(`# ${project.title}`)
   lines.push('')
@@ -423,7 +412,7 @@ export function exportNovelToMarkdown(project) {
   for (const num of chapterNums) {
     const info = blueprintChapters.find(c => c.number === num)
     const title = info?.title || `第${num}章`
-    
+
     lines.push(`## 第${num}章 ${title}`)
     lines.push('')
     lines.push(chapters[num])
