@@ -1,9 +1,9 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useMessage } from 'naive-ui'
-import { NModal, NCard, NForm, NFormItem, NInput, NButton, NSpace, NIcon, NTooltip, NTabs, NTabPane, NSelect, NAutoComplete } from 'naive-ui'
-import { FlashOutline, HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
+import { NModal, NForm, NFormItem, NInput, NButton, NSpace, NIcon, NTooltip, NTabs, NTabPane, NSelect, NAutoComplete } from 'naive-ui'
+import { HelpCircleOutline, RefreshOutline } from '@vicons/ionicons5'
 
 const props = defineProps({
   modelValue: Boolean
@@ -51,7 +51,6 @@ const currentChannel = ref('chatfire')
 const channelOptions = channels.map(c => ({ label: c.name, value: c.id }))
 
 // Current channel models - 当前渠道的模型列表
-import { computed } from 'vue'
 const currentChannelModels = computed(() => {
   // If we have fetched models and current channel matches (or using custom), prioritize fetched
   // Currently assuming fetched models apply to current config
@@ -124,30 +123,6 @@ function saveSettings() {
   emit('update:modelValue', false)
 }
 
-// Test connection - 测试连接
-async function testConnection() {
-  if (!localConfig.value.apiKey) {
-    message.warning('请先输入 API Key')
-    return
-  }
-  
-  try {
-    const response = await fetch(`${localConfig.value.baseUrl}/models`, {
-      headers: {
-        'Authorization': `Bearer ${localConfig.value.apiKey}`
-      }
-    })
-    
-    if (response.ok) {
-      message.success('连接成功!')
-    } else {
-      message.error('连接失败: ' + response.status)
-    }
-  } catch (error) {
-    message.error('连接失败: ' + error.message)
-  }
-}
-
 // Fetch models - 获取模型
 const isFetchingModels = ref(false)
 async function handleFetchModels() {
@@ -179,11 +154,11 @@ function goToGetKey() {
     :mask-closable="false"
     preset="card"
     title="API 设置"
-    style="width: 520px"
+    style="width: min(520px, calc(100vw - 20px))"
     :bordered="false"
-    class="!rounded-2xl"
+    class="!rounded-2xl settings-modal"
   >
-    <n-form label-placement="top" class="space-y-1">
+    <n-form label-placement="top" class="space-y-1 max-h-[70vh] overflow-y-auto pr-1">
       <!-- Channel Select -->
       <n-form-item label="渠道">
         <n-select
@@ -214,7 +189,7 @@ function goToGetKey() {
       <!-- Default Model -->
       <n-form-item>
         <template #label>
-          <div class="flex items-center gap-1">
+          <div class="flex flex-wrap items-center gap-1">
             <span>默认模型</span>
             <n-button text size="tiny" class="ml-2" @click="handleFetchModels" :loading="isFetchingModels">
               <template #icon>
@@ -232,7 +207,7 @@ function goToGetKey() {
             </n-tooltip>
           </div>
         </template>
-<n-auto-complete
+        <n-auto-complete
           v-model:value="localConfig.model"
           :options="currentChannelModels"
           :get-show="() => true"
@@ -254,9 +229,9 @@ function goToGetKey() {
             留空则使用默认模型
           </n-tooltip>
         </div>
-        <n-tabs type="segment" size="small">
+        <n-tabs type="segment" size="small" class="settings-stage-tabs">
           <n-tab-pane v-for="(label, key) in stageLabels" :key="key" :name="key" :tab="label">
-<n-auto-complete
+            <n-auto-complete
               v-model:value="localStageModels[key]"
               :options="currentChannelModels"
               :get-show="() => true"
@@ -270,8 +245,8 @@ function goToGetKey() {
     </n-form>
 
     <template #footer>
-      <div class="flex justify-between">
-        <n-space>
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <n-space class="w-full sm:w-auto">
           <n-button @click="goToGetKey" tertiary>
             获取 Key
           </n-button>
@@ -282,11 +257,25 @@ function goToGetKey() {
             测试连接
           </n-button> -->
         </n-space>
-        <n-space>
-          <n-button @click="emit('update:modelValue', false)">取消</n-button>
-          <n-button type="primary" @click="saveSettings">保存</n-button>
+        <n-space class="w-full sm:w-auto sm:justify-end">
+          <n-button class="flex-1 sm:flex-none" @click="emit('update:modelValue', false)">取消</n-button>
+          <n-button class="flex-1 sm:flex-none" type="primary" @click="saveSettings">保存</n-button>
         </n-space>
       </div>
     </template>
   </n-modal>
 </template>
+
+<style>
+.settings-modal .n-card {
+  max-height: calc(100vh - 24px);
+}
+
+.settings-stage-tabs .n-tabs-nav-scroll-content {
+  gap: 6px;
+}
+
+.settings-stage-tabs .n-tabs-wrapper {
+  overflow-x: auto;
+}
+</style>

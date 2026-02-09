@@ -30,6 +30,10 @@ const hasContent = computed(() => {
          props.project?.worldBuilding || props.project?.plotArchitecture
 })
 
+const generatedSectionCount = computed(() => {
+  return sections.filter(section => !!props.project?.[section.key]).length
+})
+
 // Update section content - 更新部分内容
 function updateContent(key, value) {
   novelStore.updateProject(props.project.id, { [key]: value })
@@ -66,12 +70,18 @@ function updateContent(key, value) {
     <!-- Content sections - 内容部分 -->
     <template v-else>
       <!-- Action bar - 操作栏 -->
-      <div class="flex justify-end mb-4">
+      <div class="mobile-toolbar-sticky mobile-surface-glass md:bg-white md:dark:bg-[#1f1f23] rounded-2xl p-3 md:p-4 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between gap-3">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span class="text-xs font-medium">已生成 {{ generatedSectionCount }}/{{ sections.length }} 模块</span>
+        </div>
+
         <n-button 
           :disabled="isGenerating"
+          :loading="isGenerating"
           @click="emit('regenerate')"
-          size="small"
           secondary
+          class="regen-button !bg-gray-100 dark:!bg-gray-800"
         >
           <template #icon>
             <n-icon><RefreshOutline /></n-icon>
@@ -91,12 +101,12 @@ function updateContent(key, value) {
           :name="section.key"
         >
           <template #header>
-            <div class="flex items-center gap-3 py-1">
-              <div :class="['w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg', section.color]">
+            <div class="flex items-center gap-2.5 md:gap-3 py-1">
+              <div :class="['w-8 h-8 md:w-9 md:h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-lg', section.color]">
                 <component :is="section.icon" class="w-5 h-5 text-white" />
               </div>
               <div class="flex-1">
-                <span class="font-semibold text-gray-800 dark:text-white">{{ section.title }}</span>
+                <span class="text-sm md:text-base font-semibold text-gray-800 dark:text-white">{{ section.title }}</span>
                 <span class="text-xs text-gray-400 ml-2 hidden sm:inline">{{ section.description }}</span>
               </div>
               <n-tag 
@@ -132,10 +142,10 @@ function updateContent(key, value) {
   border: none !important;
 }
 .n-collapse-item__header{
-  padding: 4px 10px !important;
+  padding: 4px 0 !important;
 }
 .architecture-collapse .n-collapse-item {
-  @apply mb-3;
+  @apply mb-4;
 }
 
 .architecture-collapse .n-collapse-item:last-child {
@@ -143,15 +153,22 @@ function updateContent(key, value) {
 }
 
 .architecture-collapse .n-collapse-item__header {
-  @apply bg-white dark:bg-[#1f1f23] rounded-xl px-4 border border-gray-200/80 dark:border-gray-700/50 hover:border-indigo-300 dark:hover:border-indigo-600/50 transition-colors;
+  @apply bg-white dark:bg-[#1f1f23] rounded-2xl px-4 md:px-5 py-3.5 md:py-4 shadow-sm border border-gray-100 dark:border-gray-800 hover:border-indigo-200 dark:hover:border-indigo-600/30 transition-all;
 }
 
 .architecture-collapse .n-collapse-item__content-wrapper {
-  @apply bg-transparent;
+  @apply bg-white dark:bg-[#1f1f23] rounded-b-2xl -mt-4 mx-1.5 md:mx-2 border-x border-b border-gray-100 dark:border-gray-800/50;
 }
 
 .architecture-collapse .n-collapse-item__content-inner {
-  @apply pt-0 pb-0;
+  @apply pt-5 pb-3.5 px-3 md:px-4;
 }
 
+.novel-textarea .n-input-wrapper {
+  @apply !bg-gray-50 dark:!bg-gray-800/50 !rounded-xl !border-transparent;
+}
+
+.novel-textarea.n-input--focus .n-input-wrapper {
+  @apply !bg-white dark:!bg-[#1f1f23] ring-2 ring-indigo-500/20;
+}
 </style>

@@ -59,54 +59,102 @@ export async function fetchModels(config) {
 }
 
 /**
- * Stream completion with callback
- * 流式补全并回调
+ * Stream completion with callback and retry logic
+ * 流式补全并回调，带重试机制
  */
-async function streamCompletion(baseUrl, apiKey, requestBody, timeout, onStream) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  })
+async function streamCompletion(baseUrl, apiKey, requestBody, timeout, onStream, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      })
 
-  if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`)
-  }
+      if (!response.ok) {
+        // 502/503/504 等网关错误，可以重试
+        if ([502, 503, 504, 429].includes(response.status) && attempt < retries) {
+          const delay = Math.pow(2, attempt) * 1000 // 指数退避: 2s, 4s, 8s
+          console.warn(`API 返回 ${response.status}，${delay / 1000}秒后重试 (${attempt}/${retries})...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue
+        }
+        throw new Error(`API request failed: ${response.status}`)
+      }
 
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let fullContent = ''
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let fullContent = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+      // 节流控制：每100ms最多更新一次UI
+      let lastUpdateTime = 0
+      const throttleInterval = 100 // ms
+      let pendingUpdate = null
 
-    const chunk = decoder.decode(value)
-    const lines = chunk.split('\n').filter(line => line.trim() !== '')
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6)
-        if (data === '[DONE]') continue
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(line => line.trim() !== '')
 
-        try {
-          const parsed = JSON.parse(data)
-          const content = parsed.choices?.[0]?.delta?.content || ''
-          if (content) {
-            fullContent += content
-            onStream(content, fullContent)
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || ''
+              if (content) {
+                fullContent += content
+
+                // 节流更新UI
+                const now = Date.now()
+                if (now - lastUpdateTime >= throttleInterval) {
+                  onStream(content, fullContent)
+                  lastUpdateTime = now
+                  if (pendingUpdate) {
+                    clearTimeout(pendingUpdate)
+                    pendingUpdate = null
+                  }
+                } else if (!pendingUpdate) {
+                  // 确保最后一次更新不会丢失
+                  pendingUpdate = setTimeout(() => {
+                    onStream(content, fullContent)
+                    lastUpdateTime = Date.now()
+                    pendingUpdate = null
+                  }, throttleInterval)
+                }
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
           }
-        } catch (e) {
-          // Skip invalid JSON
         }
       }
+
+      // 确保最终内容被回调
+      if (pendingUpdate) {
+        clearTimeout(pendingUpdate)
+      }
+      onStream('', fullContent) // 最终回调
+
+      return fullContent
+    } catch (error) {
+      // 网络错误等可重试
+      if (attempt < retries) {
+        const delay = Math.pow(2, attempt) * 1000
+        console.warn(`请求失败: ${error.message}，${delay / 1000}秒后重试 (${attempt}/${retries})...`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+      throw error
     }
   }
-
-  return fullContent
 }
 
 /**

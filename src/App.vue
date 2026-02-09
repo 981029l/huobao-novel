@@ -4,7 +4,15 @@ import { useSettingsStore } from './stores/settings'
 import { NConfigProvider, NMessageProvider, NDialogProvider, darkTheme } from 'naive-ui'
 import AppHeader from './components/AppHeader.vue'
 
+import { useNovelStore } from './stores/novel'
+import { onMounted } from 'vue'
+
 const settings = useSettingsStore()
+const novelStore = useNovelStore()
+
+onMounted(() => {
+  novelStore.init()
+})
 
 const theme = computed(() => settings.isDark ? darkTheme : null)
 </script>
@@ -18,7 +26,7 @@ const theme = computed(() => settings.isDark ? darkTheme : null)
           <AppHeader />
           
           <!-- Main content - 主内容区 -->
-          <main class="max-w-6xl mx-auto px-6 py-8">
+          <main class="max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8">
             <router-view />
           </main>
         </div>

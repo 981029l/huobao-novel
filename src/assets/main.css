@@ -112,3 +112,82 @@
 .novel-textarea .n-input__textarea-el {
   @apply bg-transparent font-mono text-sm leading-relaxed;
 }
+
+/* Mobile utility styles */
+/* 移动端通用样式 */
+.mobile-toolbar-sticky {
+  position: sticky;
+  top: calc(3.5rem + 0.5rem + env(safe-area-inset-top));
+  z-index: 35;
+}
+
+.mobile-surface-glass {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.dark .mobile-surface-glass {
+  background: rgba(31, 31, 35, 0.88);
+}
+
+@media (min-width: 768px) {
+  .mobile-toolbar-sticky {
+    position: static;
+    top: auto;
+    z-index: auto;
+  }
+}
+
+/* Unified regenerate action button */
+/* 统一“重新生成”按钮样式 */
+.regen-button.n-button {
+  @apply !h-9 !px-3.5 !rounded-xl !border-0;
+}
+
+.regen-button .n-button__content {
+  @apply !text-xs md:!text-sm !font-medium;
+}
+
+.regen-button .n-icon {
+  @apply !text-[14px];
+}
+
+/* Unified button system */
+/* 按钮统一规范 */
+.n-button {
+  border-radius: 12px;
+  font-weight: 600;
+  transition: transform 0.16s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.n-button .n-button__content {
+  letter-spacing: 0.01em;
+}
+
+.n-button.n-button--circle-type {
+  border-radius: 9999px;
+}
+
+.n-button.n-button--text-type {
+  border-radius: 10px;
+}
+
+.n-button:not(.n-button--disabled):not(.n-button--circle-type):active {
+  transform: scale(0.98);
+}
+
+.btn-unified {
+  @apply rounded-xl border border-transparent transition-all duration-200 outline-none;
+}
+
+.btn-unified:focus-visible {
+  @apply ring-2 ring-indigo-500/30;
+}
+
+.btn-unified:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-unified:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}

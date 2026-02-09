@@ -53,20 +53,20 @@ const progress = computed(() => {
 
 <template>
   <div 
-    class="bg-white dark:bg-[#1f1f23] rounded-2xl border border-gray-200/80 dark:border-gray-700/50 overflow-hidden cursor-pointer group hover:shadow-xl hover:shadow-indigo-500/5 dark:hover:shadow-indigo-500/10 hover:border-indigo-300 dark:hover:border-indigo-600/50 transition-all duration-300"
+    class="bg-white dark:bg-[#1f1f23] rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden cursor-pointer group active:scale-[0.99] hover:shadow-xl hover:shadow-indigo-500/5 dark:hover:shadow-indigo-500/10 hover:border-indigo-200 dark:hover:border-indigo-600/30 transition-all duration-300 relative"
     @click="emit('click')"
   >
     <!-- Gradient accent bar -->
     <!-- <div class="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-60 group-hover:opacity-100 transition-opacity"></div> -->
     
-    <div class="p-5">
+    <div class="p-4 md:p-5">
       <!-- Title and actions - 标题和操作 -->
       <div class="flex items-start justify-between mb-3">
         <div class="flex-1 min-w-0">
-          <h3 class="text-lg font-semibold text-gray-800 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+          <h3 class="text-base md:text-lg font-semibold text-gray-800 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
             {{ project.title }}
           </h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 mt-1">
             {{ genreText }} · {{ project.numberOfChapters }} 章
           </p>
         </div>
@@ -76,7 +76,7 @@ const progress = computed(() => {
           circle
           quaternary
           size="small"
-          class="opacity-0 group-hover:opacity-100 transition-opacity !ml-2"
+          class="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity !ml-2"
           @click.stop="emit('delete')"
         >
           <template #icon>
@@ -86,12 +86,12 @@ const progress = computed(() => {
       </div>
 
       <!-- Topic preview - 主题预览 -->
-      <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-4 leading-relaxed">
+      <p class="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-3 md:mb-4 leading-relaxed">
         {{ project.topic }}
       </p>
 
       <!-- Progress bar - 进度条 -->
-      <div class="mb-4">
+      <div class="mb-3 md:mb-4">
         <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
           <span>生成进度</span>
           <span class="font-medium">{{ progress }}%</span>
@@ -108,7 +108,7 @@ const progress = computed(() => {
       </div>
 
       <!-- Footer info - 底部信息 -->
-      <div class="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700/50">
+      <div class="flex items-center justify-between pt-2.5 md:pt-3 border-t border-gray-100 dark:border-gray-700/50">
         <n-tag :type="statusInfo.type" size="small" :bordered="false" round>
           {{ statusInfo.text }}
         </n-tag>

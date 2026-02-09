@@ -4,7 +4,7 @@ import { architecturePrompts, chapterPrompts, utilityPrompts } from '../prompts'
 // 解构提示词
 const { coreSeed: coreSeedPrompt, characterDynamics: characterDynamicsPrompt, worldBuilding: worldBuildingPrompt, plotArchitecture: plotArchitecturePrompt, characterState: createCharacterStatePrompt } = architecturePrompts
 const { blueprint: chapterBlueprintPrompt, blueprintChunked: chunkedChapterBlueprintPrompt, firstDraft: firstChapterDraftPrompt, nextDraft: nextChapterDraftPrompt, enrich: enrichChapterPrompt } = chapterPrompts
-const { summary: summaryPrompt, updateCharacterState: updateCharacterStatePrompt } = utilityPrompts
+const { summary: summaryPrompt, updateCharacterState: updateCharacterStatePrompt, qualityCheck: qualityCheckPrompt, fixChapter: fixChapterPrompt } = utilityPrompts
 
 function formatGenre(genre) {
   if (Array.isArray(genre)) return genre.join(' / ')
@@ -95,10 +95,13 @@ ${project.plotArchitecture}
 `
 
   // Calculate chunk size based on max tokens - 根据最大 token 数计算分块大小
-  const tokensPerChapter = 200
+  // 番茄风格的大纲每章约300 tokens，保守估算
+  const tokensPerChapter = 350
   const maxTokens = apiConfig.maxTokens || 8192
-  let chunkSize = Math.floor(maxTokens / tokensPerChapter / 10) * 10 - 10
-  chunkSize = Math.max(1, Math.min(chunkSize, numberOfChapters))
+  // 计算每批章节数，留30%余量防止截断
+  let chunkSize = Math.floor((maxTokens * 0.7) / tokensPerChapter)
+  chunkSize = Math.max(5, Math.min(chunkSize, 25, numberOfChapters)) // 最多25章一批
+
 
   let blueprint = project.chapterBlueprint || ''
 
@@ -152,6 +155,11 @@ ${project.plotArchitecture}
       }
 
       currentStart = currentEnd + 1
+
+      // 批次间延迟，防止 rate limit
+      if (currentStart <= numberOfChapters) {
+        await new Promise(resolve => setTimeout(resolve, 1500))
+      }
     }
   }
 
@@ -180,29 +188,41 @@ export function parseChapterBlueprint(blueprint) {
   if (!blueprint) return []
 
   const chapters = []
-  const pattern = /第\s*(\d+)\s*章\s*[-–—]\s*(.+?)(?=\n|$)/g
+  // 匹配两种格式: "第n章｜标题" 或 "第 n 章 - 标题"
+  const pattern = /第\s*(\d+)\s*章\s*[｜\|－\-–—]\s*\[?(.+?)\]?(?=\n|$)/g
   let match
 
   while ((match = pattern.exec(blueprint)) !== null) {
     const chapterNum = parseInt(match[1])
-    const title = match[2].trim()
+    const title = match[2].trim().replace(/^\[|\]$/g, '') // 去除可能的方括号
 
     // Extract chapter details - 提取章节详情
     const startIndex = match.index
-    const endIndex = blueprint.indexOf(`第 ${chapterNum + 1} 章`, startIndex)
-    const chapterText = endIndex > -1
-      ? blueprint.substring(startIndex, endIndex)
-      : blueprint.substring(startIndex)
+    // 寻找下一章的开始位置
+    const nextChapterPattern = new RegExp(`第\\s*${chapterNum + 1}\\s*章`)
+    const nextMatch = blueprint.substring(startIndex + match[0].length).match(nextChapterPattern)
+    const endIndex = nextMatch ? startIndex + match[0].length + nextMatch.index : blueprint.length
+    const chapterText = blueprint.substring(startIndex, endIndex)
 
+    // 提取字段（兼容新旧格式）
     chapters.push({
       number: chapterNum,
       title,
-      position: extractField(chapterText, '本章定位'),
-      purpose: extractField(chapterText, '核心作用'),
-      suspense: extractField(chapterText, '悬念密度'),
-      foreshadowing: extractField(chapterText, '伏笔操作'),
-      twistLevel: extractField(chapterText, '认知颠覆'),
-      summary: extractField(chapterText, '本章简述')
+      // 位置/定位
+      position: extractField(chapterText, '承接点') || extractField(chapterText, '本章定位') || extractField(chapterText, '开场钩子'),
+      // 核心作用/爽点
+      purpose: extractField(chapterText, '本章爽点兑现') || extractField(chapterText, '核心作用') || extractField(chapterText, '本章冲突'),
+      // 情绪曲线/悬念
+      suspense: extractField(chapterText, '情绪曲线') || extractField(chapterText, '悬念密度'),
+      // 章末卡点/伏笔
+      foreshadowing: extractField(chapterText, '章末卡点') || extractField(chapterText, '伏笔操作'),
+      // 张力/颠覆等级
+      twistLevel: extractField(chapterText, '张力星级') || extractField(chapterText, '认知颠覆'),
+      // 简述
+      summary: extractField(chapterText, '一句话剧情') || extractField(chapterText, '本章简述'),
+      // 新增字段
+      conflict: extractField(chapterText, '本章冲突'),
+      reward: extractField(chapterText, '本章收益')
     })
   }
 
@@ -323,6 +343,9 @@ export async function finalizeChapter(project, chapterNumber, chapterText, apiCo
     globalSummary: project.globalSummary || ''
   }), onStream ? (chunk, full) => onStream('summary', full) : null))
 
+  // 等待500ms避免API限流
+  await new Promise(resolve => setTimeout(resolve, 500))
+
   onProgress('正在更新角色状态...', 2, 3)
 
   // Update character state - 更新角色状态
@@ -420,4 +443,101 @@ export function exportNovelToMarkdown(project) {
   }
 
   return lines.join('\n')
+}
+
+/**
+ * Check chapter quality - 章节质检
+ * 自动检查生成的章节是否符合要求
+ */
+export async function checkChapterQuality(params, apiConfig) {
+  const { chapterText, chapterNumber, chapterTitle, chapterSummary, wordNumber, actualWordCount, nextChapterNumber, nextChapterTitle, nextChapterSummary } = params
+
+  console.log('📋 质检使用的模型:', apiConfig.model)
+  console.log('📊 实际字数:', actualWordCount, '目标字数:', wordNumber)
+
+  try {
+    const prompt = qualityCheckPrompt({
+      chapterText,
+      chapterNumber,
+      chapterTitle,
+      chapterSummary,
+      wordNumber,
+      actualWordCount: actualWordCount || chapterText.length,
+      nextChapterNumber: nextChapterNumber || chapterNumber + 1,
+      nextChapterTitle: nextChapterTitle || '(无)',
+      nextChapterSummary: nextChapterSummary || '(无)'
+    })
+
+    const response = await chatCompletion(apiConfig, prompt, null)
+
+    // 尝试解析JSON响应
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0])
+      }
+    } catch (parseError) {
+      console.warn('质检结果解析失败:', parseError)
+    }
+
+    // 解析失败时返回默认通过
+    return {
+      wordCount: chapterText.length,
+      wordCountPass: true,
+      contentMatch: true,
+      nextChapterSpill: false,
+      hasCliffhanger: true,
+      overallPass: true,
+      issues: []
+    }
+  } catch (error) {
+    console.error('质检请求失败:', error)
+    // 请求失败时返回默认通过，不阻塞用户
+    return {
+      wordCount: chapterText.length,
+      wordCountPass: true,
+      contentMatch: true,
+      nextChapterSpill: false,
+      hasCliffhanger: true,
+      overallPass: true,
+      issues: ['质检请求失败，已跳过']
+    }
+  }
+}
+
+/**
+ * Fix chapter by quality check - 根据质检结果修复章节
+ * 使用和写作相同的模型
+ */
+export async function fixChapterByQuality(params, apiConfig, onProgress, onStream) {
+  const { chapterText, chapterNumber, chapterTitle, chapterSummary, wordNumber, nextChapterNumber, nextChapterTitle, qualityResult } = params
+
+  onProgress('正在根据质检结果修复章节...', 0, 1)
+
+  try {
+    const prompt = fixChapterPrompt({
+      chapterText,
+      chapterNumber,
+      chapterTitle,
+      chapterSummary,
+      wordNumber,
+      nextChapterNumber: nextChapterNumber || chapterNumber + 1,
+      nextChapterTitle: nextChapterTitle || '(无)',
+      wordCount: qualityResult.wordCount,
+      wordCountPass: qualityResult.wordCountPass,
+      contentMatch: qualityResult.contentMatch,
+      nextChapterSpill: qualityResult.nextChapterSpill,
+      hasCliffhanger: qualityResult.hasCliffhanger,
+      issues: qualityResult.issues || []
+    })
+
+    const fixedText = cleanResponse(await chatCompletion(apiConfig, prompt, onStream ? (chunk, full) => onStream(full) : null))
+
+    onProgress('修复完成', 1, 1)
+    return fixedText || chapterText
+  } catch (error) {
+    console.error('修复失败:', error)
+    onProgress('修复失败', 1, 1)
+    return chapterText
+  }
 }
